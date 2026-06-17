@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Transport Policy Simulator</title>
+<style>
+html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;
+  font-family:'Segoe UI',Arial,sans-serif;background:#dde1ea;}
+#svg{display:block;width:100vw;height:100vh;}
+#ui{position:fixed;top:14px;left:14px;z-index:200;display:flex;flex-direction:column;gap:8px;pointer-events:none;}
+#ui>*{pointer-events:all;}
+#panel{background:#ffffffee;padding:11px 14px;border-radius:10px;
+  box-shadow:0 2px 12px rgba(0,0,0,.15);font-size:12px;line-height:1.9;max-width:195px;}
+#panel strong{display:block;font-size:13px;margin-bottom:1px;}
+#panel span{color:#555;font-size:11px;display:block;}
+#legend{background:#ffffffee;padding:10px 14px;border-radius:10px;
+  box-shadow:0 2px 12px rgba(0,0,0,.15);font-size:11px;
+  display:flex;flex-direction:column;gap:4px;}
+.lr{display:flex;align-items:center;gap:7px;}
+.lsep{height:1px;background:#ddd;margin:3px 0;}
+#btns{position:fixed;top:14px;right:14px;z-index:200;display:flex;gap:6px;}
+#btns button{width:32px;height:32px;border:none;border-radius:8px;cursor:pointer;
+  background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:18px;line-height:1;}
+#btns button:hover{background:#e0e3ec;}
+#resetbtn{position:fixed;top:56px;right:14px;z-index:200;border:none;
+  border-radius:8px;cursor:pointer;padding:6px 14px;
+  background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:12px;}
+#resetbtn:hover{background:#e0e3ec;}
+</style>
+</head>
+<body>
+<svg id="svg" xmlns="http://www.w3.org/2000/svg">
+<defs id="defs">
+  <marker id="mBlue" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+    <path d="M0,0 L0,7 L9,3.5 z" fill="#1e90ff"/>
+  </marker>
+  <marker id="mRed" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+    <path d="M0,0 L0,7 L9,3.5 z" fill="#ff4444"/>
+  </marker>
+</defs>
+<!-- canvas bg -->
+<rect x="-5000" y="-5000" width="20000" height="20000" fill="#dde1ea"/>
+<g id="vp">
+  <g id="gGroups"></g>
+  <g id="gLinks"></g>
+  <g id="gPulses"></g>
+  <g id="gNodes"></g>
+</g>
+</svg>
+
+<div id="ui">
+  <div id="panel">
+    <strong>Transport Policy Simulator</strong>
+    <span>Click node → increase</span>
+    <span>Shift+click → decrease</span>
+    <span>Drag to pan · scroll to zoom</span>
+  </div>
+  <div id="legend">
+    <div class="lr">
+      <svg width="18" height="14" xmlns="http://www.w3.org/2000/svg">
+        <rect x="1" y="1" width="16" height="12" rx="3" fill="#fde8d8" stroke="#c45c1a" stroke-width="1.5"/></svg>
+      Social demographics
+    </div>
+    <div class="lr">
+      <svg width="18" height="14" xmlns="http://www.w3.org/2000/svg">
+        <rect x="1" y="1" width="16" height="12" rx="3" fill="#d8e8ff" stroke="#0037b3" stroke-width="1.5"/></svg>
+      Transport policies
+    </div>
+    <div class="lr">
+      <svg width="18" height="14" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="9" cy="7" r="6" fill="#d4f5d4" stroke="#007a00" stroke-width="1.5"/></svg>
+      Impact / behaviour
+    </div>
+    <div class="lr">
+      <svg width="18" height="14" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="9,1 17,7 9,13 1,7" fill="#fff3cc" stroke="#9a7000" stroke-width="1.5"/></svg>
+      Road infrastructure
+    </div>
+    <div class="lr">
+      <svg width="18" height="14" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="9,1 17,7 9,13 1,7" fill="#daeeff" stroke="#005fa3" stroke-width="1.5"/></svg>
+      PT infrastructure
+    </div>
+    <div class="lsep"></div>
+    <div class="lr">
+      <svg width="30" height="10" xmlns="http://www.w3.org/2000/svg">
+        <defs><marker id="la" viewBox="0 0 9 7" refX="8" refY="3.5" markerWidth="5" markerHeight="4" orient="auto">
+          <path d="M0,0L0,7L9,3.5z" fill="#1e90ff"/></marker></defs>
+        <line x1="2" y1="5" x2="24" y2="5" stroke="#1e90ff" stroke-width="2" marker-end="url(#la)"/>
+      </svg>Reinforce
+    </div>
+    <div class="lr">
+      <svg width="30" height="10" xmlns="http://www.w3.org/2000/svg">
+        <defs><marker id="lb" viewBox="0 0 9 7" refX="8" refY="3.5" markerWidth="5" markerHeight="4" orient="auto">
+          <path d="M0,0L0,7L9,3.5z" fill="#ff4444"/></marker></defs>
+        <line x1="2" y1="5" x2="24" y2="5" stroke="#ff4444" stroke-width="2" stroke-dasharray="5 2" marker-end="url(#lb)"/>
+      </svg>Balance
+    </div>
+  </div>
+</div>
+<div id="btns">
+  <button onclick="zoomBy(1.2)">+</button>
+  <button onclick="zoomBy(0.83)">−</button>
+</div>
+<button id="resetbtn" onclick="resetAll()">↺ Reset</button>
+
+<script>
+const NS='http://www.w3.org/2000/svg';
+const svgEl  =document.getElementById('svg');
+const vp     =document.getElementById('vp');
+const gGroups=document.getElementById('gGroups');
+const gLinks =document.getElementById('gLinks');
+const gPulses=document.getElementById('gPulses');
+const gNodes =document.getElementById('gNodes');
+const defsEl =document.getElementById('defs');
+
+function se(t){return document.createElementNS(NS,t);}
+function sa(e,o){for(const[k,v]of Object.entries(o))e.setAttribute(k,String(v));return e;}
+
+// ── CATEGORY STYLES ───────────────────────────────────────────────────────────
+const CAT={
+  social:{
+    shape:'rect',
+    groupFill:'#fde8d8',groupStroke:'#d4845a',
+    nodeFill:'#fde8d8',nodeDark:'#b34a10',nodeBorder:'#c45c1a',
+    label:'Social Demographics'
+  },
+  policy:{
+    shape:'rect',
+    groupFill:'#d8e8ff',groupStroke:'#6699dd',
+    nodeFill:'#d8e8ff',nodeDark:'#0037b3',nodeBorder:'#2255cc',
+    label:'Transport Policies'
+  },
+  impact:{
+    shape:'circle',
+    groupFill:'#d4f5d4',groupStroke:'#5ab85a',
+    nodeFill:'#d4f5d4',nodeDark:'#007a00',nodeBorder:'#228822',
+    label:'Impact / Behaviour'
+  },
+  road:{
+    shape:'diamond',
+    groupFill:'#fff3cc',groupStroke:'#c8a030',
+    nodeFill:'#fff3cc',nodeDark:'#9a7000',nodeBorder:'#b08820',
+    label:'Road Infrastructure'
+  },
+  pt:{
+    shape:'diamond',
+    groupFill:'#daeeff',groupStroke:'#4d9fd4',
+    nodeFill:'#daeeff',nodeDark:'#005fa3',nodeBorder:'#2277bb',
+    label:'PT Infrastructure'
+  },
+};
+
+// ── NODE LAYOUT ───────────────────────────────────────────────────────────────
+// 5 groups arranged horizontally with generous padding
+// Group x-centres: social=160, policy=400, impact=660, road=900, pt=1140
+// Each group is ~180px wide, nodes centred within
+// Row spacing: 150px
+
+const NODES={
+  // Social Demographics  (col centreX=160)
+  Population:     {x:160,y:130,cat:'social', val:50,label:'Population'},
+  DwellingUnits:  {x:160,y:300,cat:'social', val:50,label:'Dwelling\nUnits'},
+  CarPopulation:  {x:160,y:470,cat:'social', val:50,label:'Car\nPopulation'},
+  CarOwningHH:    {x:160,y:640,cat:'social', val:50,label:'Car-Owning\nHouseholds'},
+
+  // Transport Policies  (col centreX=400)
+  RoadPricing:    {x:400,y:200,cat:'policy', val:50,label:'Road\nPricing'},
+  NewRoads:       {x:400,y:390,cat:'road',   val:50,label:'New Roads'},
+  TransportBudget:{x:400,y:580,cat:'policy', val:50,label:'Transport\nBudget'},
+
+  // Impact / Behaviour  (col centreX=660)
+  ModeShare:      {x:660,y:130,cat:'impact', val:50,label:'Mode Share'},
+  PTRidership:    {x:660,y:300,cat:'impact', val:50,label:'PT Ridership'},
+  Crowding:       {x:660,y:470,cat:'impact', val:50,label:'Crowding'},
+  PublicSentiment:{x:660,y:640,cat:'impact', val:50,label:'Public\nSentiment'},
+  Congestion:     {x:660,y:800,cat:'impact', val:50,label:'Congestion'},
+
+  // PT Infrastructure  (col centreX=920)
+  NewRailSystem:  {x:920,y:200,cat:'pt',     val:50,label:'New Rail\nSystem'},
+  NewTrains:      {x:920,y:370,cat:'pt',     val:50,label:'New Trains'},
+  NewBusServices: {x:920,y:540,cat:'pt',     val:50,label:'New Bus\nServices'},
+  NewBuses:       {x:920,y:700,cat:'pt',     val:50,label:'New Buses'},
+  NewDepot:       {x:920,y:860,cat:'pt',     val:50,label:'New Depot'},
+};
+
+const EDGES=[
+  ['Population',    'ModeShare',        1],
+  ['Population',    'CarPopulation',    1],
+  ['DwellingUnits', 'CarOwningHH',     -1],
+  ['DwellingUnits', 'ModeShare',        1],
+  ['CarPopulation', 'CarOwningHH',      1],
+  ['CarPopulation', 'Congestion',       1],
+  ['CarOwningHH',   'ModeShare',       -1],
+  ['CarOwningHH',   'PublicSentiment', -1],
+  ['ModeShare',     'PTRidership',      1],
+  ['PTRidership',   'Crowding',         1],
+  ['Crowding',      'PublicSentiment',  1],
+  ['PublicSentiment','ModeShare',       1],
+  ['Congestion',    'PublicSentiment',  1],
+  ['RoadPricing',   'Congestion',      -1],
+  ['RoadPricing',   'CarOwningHH',     -1],
+  ['NewRoads',      'Congestion',      -1],
+  ['NewRoads',      'TransportBudget',  1],
+  ['NewRailSystem', 'Crowding',        -1],
+  ['NewRailSystem', 'TransportBudget',  1],
+  ['NewTrains',     'Crowding',        -1],
+  ['NewTrains',     'TransportBudget', -1],
+  ['NewBusServices','Crowding',        -1],
+  ['NewBusServices','NewBuses',         1],
+  ['NewBuses',      'NewDepot',         1],
+  ['NewBuses',      'TransportBudget',  1],
+  ['TransportBudget','NewRailSystem',   1],
+  ['TransportBudget','NewBusServices',  1],
+  ['TransportBudget','NewRoads',        1],
+];
+
+// ── GROUP BACKGROUND BOXES ────────────────────────────────────────────────────
+// Manually define group bounds per category for clean enclosure
+const GROUP_BOUNDS={
+  social: {x:60,  y:55,  w:200, h:660, label:'Social Demographics'},
+  policy: {x:295, y:120, w:210, h:530, label:'Transport Policies'},
+  road:   {x:295, y:310, w:210, h:155, label:'Road Infrastructure'},
+  impact: {x:555, y:55,  w:210, h:820, label:'Impact / Behaviour'},
+  pt:     {x:810, y:120, w:215, h:815, label:'PT Infrastructure'},
+};
+
+Object.entries(GROUP_BOUNDS).forEach(([cat,b])=>{
+  const c=CAT[cat];
+  // shadow rect
+  const shadow=se('rect');
+  sa(shadow,{x:b.x+4,y:b.y+4,width:b.w,height:b.h,rx:18,
+    fill:'#00000018'});
+  gGroups.appendChild(shadow);
+  // main box
+  const box=se('rect');
+  sa(box,{x:b.x,y:b.y,width:b.w,height:b.h,rx:18,
+    fill:c.groupFill,stroke:c.groupStroke,
+    'stroke-width':'2',opacity:'0.7'});
+  gGroups.appendChild(box);
+  // category label
+  const txt=se('text');
+  sa(txt,{x:b.x+16,y:b.y+22,
+    'font-family':'Segoe UI,Arial,sans-serif',
+    'font-size':'12','font-weight':'700',
+    fill:c.nodeDark,opacity:'0.85','pointer-events':'none'});
+  txt.textContent=b.label;
+  gGroups.appendChild(txt);
+});
+
+// ── SHAPE GEOMETRY ────────────────────────────────────────────────────────────
+const SH={rect:64,circle:88,diamond:68};
+const ST={rect:-32,circle:-44,diamond:-34};
+
+function makeShapeEl(shape,fillCol,strokeCol,sw){
+  let e;
+  if(shape==='circle'){
+    e=se('circle');
+    sa(e,{r:'44',fill:fillCol,stroke:strokeCol||'none','stroke-width':sw||'0'});
+  }else if(shape==='diamond'){
+    e=se('polygon');
+    sa(e,{points:'0,-34 52,0 0,34 -52,0',fill:fillCol,
+      stroke:strokeCol||'none','stroke-width':sw||'0'});
+  }else{
+    e=se('rect');
+    sa(e,{x:'-58',y:'-32',width:'116',height:'64',rx:'10',
+      fill:fillCol,stroke:strokeCol||'none','stroke-width':sw||'0'});
+  }
+  return e;
+}
+
+// ── CLIP PATHS ────────────────────────────────────────────────────────────────
+const clipRects={};
+for(const name of Object.keys(NODES)){
+  const cp=se('clipPath');sa(cp,{id:'cp_'+name});
+  const cr=se('rect');sa(cr,{x:'-80',y:'200',width:'200',height:'0'});
+  cp.appendChild(cr);defsEl.appendChild(cp);
+  clipRects[name]=cr;
+}
+
+// ── BUILD NODES ───────────────────────────────────────────────────────────────
+const nodeEls={};
+for(const[name,nd]of Object.entries(NODES)){
+  const c=CAT[nd.cat];
+  const sh=c.shape;
+  const g=se('g');
+  sa(g,{transform:`translate(${nd.x},${nd.y})`});
+  g.style.cursor='pointer';
+
+  // 1. light bg + border
+  const bg=makeShapeEl(sh,c.nodeFill,c.nodeBorder,'2.5');
+  g.appendChild(bg);
+
+  // 2. dark fill clipped from bottom
+  const fillEl=makeShapeEl(sh,c.nodeDark,'none','0');
+  sa(fillEl,{'clip-path':`url(#cp_${name})`});
+  g.appendChild(fillEl);
+
+  // 3. label
+  const lines=nd.label.split('\n');
+  const lh=13;
+  const labelEls=lines.map((line,i)=>{
+    const t=se('text');
+    t.textContent=line;
+    sa(t,{x:'0',y:String((i-(lines.length-1)/2)*lh-6),
+      'text-anchor':'middle','dominant-baseline':'middle',
+      'font-family':'Segoe UI,Arial,sans-serif',
+      'font-size':'11','font-weight':'600',fill:'#1a1a1a',
+      'pointer-events':'none'});
+    g.appendChild(t);
+    return t;
+  });
+
+  // 4. value %
+  const valEl=se('text');
+  sa(valEl,{x:'0',y:String(lines.length*lh/2+5),
+    'text-anchor':'middle','dominant-baseline':'middle',
+    'font-family':'Segoe UI,Arial,sans-serif',
+    'font-size':'10',fill:'#333','pointer-events':'none'});
+  g.appendChild(valEl);
+
+  g.addEventListener('click',e=>{
+    e.stopPropagation();
+    propagate(name,e.shiftKey?-10:10);
+  });
+
+  gNodes.appendChild(g);
+  nodeEls[name]={labelEls,valEl};
+  renderNode(name);
+}
+
+function renderNode(name){
+  const nd=NODES[name];
+  nd.val=Math.max(0,Math.min(100,nd.val));
+  const pct=nd.val/100;
+  const sh=CAT[nd.cat].shape;
+  const fh=SH[sh],ty=ST[sh];
+  const fillH=fh*pct;
+  const cr=clipRects[name];
+  cr.setAttribute('y',String(ty+fh-fillH));
+  cr.setAttribute('height',String(fillH+2));
+  const{labelEls,valEl}=nodeEls[name];
+  valEl.textContent=Math.round(nd.val)+'%';
+  const bright=pct>0.55;
+  labelEls.forEach(t=>t.setAttribute('fill',bright?'#ffffff':'#1a1a1a'));
+  valEl.setAttribute('fill',bright?'#ffffffcc':'#333333');
+}
+
+// ── EDGES ─────────────────────────────────────────────────────────────────────
+// ── ORTHOGONAL ROUTING ────────────────────────────────────────────────────────
+
+function orthogonalPath(x1,y1,x2,y2,offset=0){
+
+  const mx=(x1+x2)/2+offset;
+
+  return `
+    M ${x1} ${y1}
+    L ${mx} ${y1}
+    L ${mx} ${y2}
+    L ${x2} ${y2}
+  `;
+}
+
+function orthogonalPoint(x1,y1,x2,y2,offset,t){
+
+  const mx=(x1+x2)/2+offset;
+
+  const segs=[
+    {x1:x1,y1:y1,x2:mx,y2:y1},
+    {x1:mx,y1:y1,x2:mx,y2:y2},
+    {x1:mx,y1:y2,x2:x2,y2:y2}
+  ];
+
+  const lens=segs.map(s=>
+    Math.hypot(
+      s.x2-s.x1,
+      s.y2-s.y1
+    )
+  );
+
+  const total=lens.reduce((a,b)=>a+b,0);
+
+  let dist=t*total;
+
+  for(let i=0;i<segs.length;i++){
+
+    if(dist<=lens[i]){
+
+      const p=dist/lens[i];
+
+      return{
+        x:segs[i].x1+(segs[i].x2-segs[i].x1)*p,
+        y:segs[i].y1+(segs[i].y2-segs[i].y1)*p
+      };
+    }
+
+    dist-=lens[i];
+  }
+
+  return{
+    x:x2,
+    y:y2
+  };
+}
+
+const edgeData=[];
+let edgeIndex=0;
+for(const[from,to,pol]of EDGES){
+  const a=NODES[from];
+  const b=NODES[to];
+
+  const lane=((edgeIndex%7)-3)*25;
+
+  edgeIndex++;
+
+  const path=se('path');
+
+  sa(path,{
+    d:orthogonalPath(
+      a.x,
+      a.y,
+      b.x,
+      b.y,
+      lane
+    ),
+    fill:'none',
+    stroke:pol>0?'#1e90ff':'#ff4444',
+    'stroke-width':'2',
+    'stroke-dasharray':pol<0?'7 4':'none',
+    'marker-end':pol>0?'url(#mBlue)':'url(#mRed)',
+    opacity:'0.5'
+  });
+
+  gLinks.appendChild(path);
+
+  edgeData.push({
+    from,
+    to,
+    pol,
+    lane,
+    path
+  });
+}
+
+function flashEdge(from,to){
+  const e=edgeData.find(e=>e.from===from&&e.to===to);
+  if(!e)return;
+  e.path.setAttribute('opacity','1');
+  e.path.setAttribute('stroke-width','3.2');
+  setTimeout(()=>{e.path.setAttribute('opacity','0.5');e.path.setAttribute('stroke-width','1.8');},700);
+}
+
+// ── PULSE ANIMATION ───────────────────────────────────────────────────────────
+function animatePulse(from,to,delta,delayMs){
+  const a=NODES[from],b=NODES[to];
+  const col=delta>0?'#1e90ff':'#ff4444';
+  const r=Math.max(7,Math.min(18,Math.abs(delta)*0.85));
+  const g=se('g');
+  const glow=se('circle');sa(glow,{r:String(r*1.8),fill:col,opacity:'0.2'});g.appendChild(glow);
+  const dot=se('circle'); sa(dot, {r:String(r),   fill:col,opacity:'0.9'});g.appendChild(dot);
+  const core=se('circle');sa(core,{r:String(r*0.38),fill:'#fff',opacity:'0.8'});g.appendChild(core);
+  gPulses.appendChild(g);
+  let t=0;const t0=performance.now();
+  function step(ts){
+    if(ts-t0<delayMs){requestAnimationFrame(step);return;}
+    t+=0.013;
+	const edge = edgeData.find(e=>e.from===from && e.to===to);
+	const pt = orthogonalPoint(a.x, a.y, b.x, b.y, edge.lane, Math.min(t,1));
+    g.setAttribute('transform',`translate(${pt.x},${pt.y})`);
+    if(t<1){requestAnimationFrame(step);}else{g.remove();}
+  }
+  requestAnimationFrame(step);
+}
+
+// ── PROPAGATION ───────────────────────────────────────────────────────────────
+function propagate(startName,delta){
+  NODES[startName].val+=delta;
+  renderNode(startName);
+  const queue=[{node:startName,delta,time:0,depth:0}];
+  const visited=new Set([startName]);
+  while(queue.length){
+    const cur=queue.shift();
+    if(cur.depth>=6)continue;
+    for(const[from,to,pol]of EDGES){
+      if(from!==cur.node)continue;
+      const nd=cur.delta*pol*0.65;
+      const nt=cur.time+700;
+      animatePulse(from,to,nd,cur.time);
+      setTimeout(()=>{NODES[to].val+=nd;renderNode(to);flashEdge(from,to);},nt);
+      if(!visited.has(to)){
+        visited.add(to);
+        queue.push({node:to,delta:nd,time:nt,depth:cur.depth+1});
+      }
+    }
+  }
+}
+
+function resetAll(){
+  for(const n of Object.values(NODES))n.val=50;
+  for(const name of Object.keys(NODES))renderNode(name);
+}
+
+// ── PAN & ZOOM ────────────────────────────────────────────────────────────────
+let pan={x:0,y:0},scale=1,panning=false,ps={x:0,y:0};
+function applyT(){vp.setAttribute('transform',`translate(${pan.x},${pan.y}) scale(${scale})`);}
+
+window.addEventListener('load',()=>{
+  const W=window.innerWidth,H=window.innerHeight;
+  const cw=1080,ch=970;
+  scale=Math.min((W-60)/cw,(H-60)/ch,1)*0.95;
+  pan={x:(W-cw*scale)/2,y:(H-ch*scale)/2};
+  applyT();
+});
+
+svgEl.addEventListener('wheel',e=>{
+  e.preventDefault();
+  scale=Math.max(0.2,Math.min(3,scale*(e.deltaY<0?1.1:0.91)));
+  applyT();
+},{passive:false});
+
+svgEl.addEventListener('mousedown',e=>{
+  // only pan when clicking the background, not a node
+  const tg=e.target;
+  if(tg===svgEl||tg.id==='vp'||tg.id==='gGroups'||tg.tagName==='rect'&&tg.getAttribute('x')==='-5000'){
+    panning=true;ps={x:e.clientX-pan.x,y:e.clientY-pan.y};
+    svgEl.style.cursor='grabbing';
+  }
+});
+window.addEventListener('mousemove',e=>{
+  if(!panning)return;
+  pan={x:e.clientX-ps.x,y:e.clientY-ps.y};applyT();
+});
+window.addEventListener('mouseup',()=>{panning=false;svgEl.style.cursor='';});
+
+function zoomBy(f){scale=Math.max(0.2,Math.min(3,scale*f));applyT();}
+</script>
+</body>
+</html>
